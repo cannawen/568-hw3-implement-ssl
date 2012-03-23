@@ -7,8 +7,11 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <openssl/ssl.h>
 #include <openssl/err.h>
-
+#include <netinet/tcp.h>
+#include <fcntl.h>
+#include <signal.h>
 
 #define PORT 8765
 
@@ -19,12 +22,35 @@
 #define FMT_INCOMPLETE_CLOSE "ECE568-SERVER: Incomplete shutdown\n"
 
 BIO *bio_err=0;
+static char *pass;
+
+/* Print SSL errors and exit*/
+int berr_exit(string)
+  char *string;
+  {
+    BIO_printf(bio_err,"%s\n",string);
+    ERR_print_errors(bio_err);
+    exit(0);
+  }
+
+static void sigpipe_handle(int x){
+}
+
+static int password_cb(char *buf,int num,
+  int rwflag,void *userdata)
+  {
+    if(num<strlen(pass)+1)
+      return(0);
+
+    strcpy(buf,pass);
+    return(strlen(pass));
+  }
 
 SSL_CTX *initialize_ctx(keyfile,password)
   char *keyfile;
   char *password;
   {
-    SSL_METHOD *meth;//SSL_METHOD?
+    SSL_METHOD *meth;
     SSL_CTX *ctx;
     
     if(!bio_err){
@@ -57,7 +83,7 @@ SSL_CTX *initialize_ctx(keyfile,password)
 
     /* Load the CAs we trust*/
     if(!(SSL_CTX_load_verify_locations(ctx,
-      CA_LIST,0)))
+      "568ca.pem",0)))
       berr_exit("Can't read CA list");
 #if (OPENSSL_VERSION_NUMBER < 0x00905100L)
     SSL_CTX_set_verify_depth(ctx,1);
