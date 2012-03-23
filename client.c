@@ -294,7 +294,7 @@ int main(int argc, char **argv)
     if(SSL_connect(ssl)<=0)
       berr_exit("SSL connect error");
     if(require_server_auth)
-      check_cert(ssl,host);
+      check_cert(ssl,"Bob's Server");
 
     /* Now make our HTTP request */
     http_request(ssl);
@@ -317,8 +317,10 @@ int main(int argc, char **argv)
   if(connect(sock,(struct sockaddr *)&addr, sizeof(addr))<0)
     perror("connect");
   
-  send(sock, secret, strlen(secret),0);
-  len = recv(sock, &buf, 255, 0);
+  //send(sock, secret, strlen(secret),0);
+  //len = recv(sock, &buf, 255, 0);
+  SSL_write(ssl,secret,strlen(secret)+1);
+  len = SSL_read(ssl, &buf, 255);
   buf[len]='\0';
   
   /* this is how you output something for the marker to pick up */

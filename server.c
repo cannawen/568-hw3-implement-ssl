@@ -294,10 +294,12 @@ int main(int argc, char **argv)
       char buf[256];
       char *answer = "42";
 
-      len = recv(s, &buf, 255, 0);
+      //len = recv(s, &buf, 255, 0);
+      len = SSL_read(s,&buf,256);
       buf[len]= '\0';
       printf(FMT_OUTPUT, buf, answer);
-      send(s, answer, strlen(answer), 0);
+      //send(s, answer, strlen(answer), 0);
+      SSL_write(ssl,answer,strlen(answer)+1);
       close(sock);
       close(s);
       return 0;
