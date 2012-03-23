@@ -14,6 +14,7 @@
 #include <signal.h>
 
 #define PORT 8765
+#define BUFSIZZ 1024
 
 /* use these strings to tell the marker what is happening */
 #define FMT_ACCEPT_ERR "ECE568-SERVER: SSL accept error\n"
@@ -23,6 +24,19 @@
 
 BIO *bio_err=0;
 static char *pass;
+
+void destroy_ctx(ctx)
+  SSL_CTX *ctx;
+  {
+    SSL_CTX_free(ctx);
+  }
+
+int err_exit(string)
+  char *string;
+  {
+    fprintf(stderr,"%s\n",string);
+    exit(0);
+  }
 
 /* Print SSL errors and exit*/
 int berr_exit(string)
@@ -92,12 +106,104 @@ SSL_CTX *initialize_ctx(keyfile,password)
     return ctx;
   }
 
+
+static int http_serve(ssl,s)
+  SSL *ssl;
+  int s;
+  {
+    char buf[BUFSIZZ];
+    int r,len;
+    BIO *io,*ssl_bio;
+    
+    io=BIO_new(BIO_f_buffer());
+    ssl_bio=BIO_new(BIO_f_ssl());
+    BIO_set_ssl(ssl_bio,ssl,BIO_CLOSE);
+    BIO_push(io,ssl_bio);
+    
+    while(1){
+      r=BIO_gets(io,buf,BUFSIZZ-1);
+
+      switch(SSL_get_error(ssl,r)){
+        case SSL_ERROR_NONE:
+          len=r;
+          break;
+        default:
+          berr_exit("SSL read problem");
+      }
+
+      /* Look for the blank line that signals
+         the end of the HTTP headers */
+      if(!strcmp(buf,"\r\n") ||
+        !strcmp(buf,"\n"))
+        break;
+    }
+
+    if((r=BIO_puts
+      (io,"HTTP/1.0 200 OK\r\n"))<=0)
+      err_exit("Write error");
+    if((r=BIO_puts
+      (io,"Server: EKRServer\r\n\r\n"))<=0)
+      err_exit("Write error");
+    if((r=BIO_puts
+      (io,"Server test page\r\n"))<=0)
+      err_exit("Write error");
+    
+    if((r=BIO_flush(io))<0)
+      err_exit("Error flushing BIO");
+
+
+    
+    r=SSL_shutdown(ssl);
+    if(!r){
+      /* If we called SSL_shutdown() first then
+         we always get return value of '0'. In
+         this case, try again, but first send a
+         TCP FIN to trigger the other side's
+         close_notify*/
+      shutdown(s,1);
+      r=SSL_shutdown(ssl);
+    }
+      
+    switch(r){  
+      case 1:
+        break; /* Success */
+      case 0:
+      case -1:
+      default:
+        berr_exit("Shutdown failed");
+    }
+
+    SSL_free(ssl);
+    close(s);
+
+    return(0);
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 int main(int argc, char **argv)
 {
-  int s, sock, port=PORT;
+  int s,r, sock, port=PORT;
   struct sockaddr_in sin;
   int val=1;
   pid_t pid;
+        SSL_CTX *ctx;
+    SSL *ssl;
+    BIO *sbio;
   
   /*Parse command line arguments*/
   
@@ -127,7 +233,7 @@ int main(int argc, char **argv)
 
 
 
-  initialize_ctx("bob.pem","password");
+  ctx = initialize_ctx("bob.pem","password");
 
 
 
@@ -171,6 +277,18 @@ int main(int argc, char **argv)
       close(s);
     }
     else {
+
+
+        sbio=BIO_new_socket(s,BIO_NOCLOSE);
+        ssl=SSL_new(ctx);
+        SSL_set_bio(ssl,sbio,sbio);
+        
+        if((r=SSL_accept(ssl)<=0))
+          berr_exit("SSL accept error");
+        
+        http_serve(ssl,s);
+
+
       /*Child code*/
       int len;
       char buf[256];
@@ -185,7 +303,7 @@ int main(int argc, char **argv)
       return 0;
     }
   }
-  
+  destroy_ctx(ctx);
   close(sock);
   return 1;
 }
