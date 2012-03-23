@@ -17,6 +17,55 @@
 #define FMT_CLIENT_INFO "ECE568-SERVER: %s %s\n"
 #define FMT_OUTPUT "ECE568-SERVER: %s %s\n"
 #define FMT_INCOMPLETE_CLOSE "ECE568-SERVER: Incomplete shutdown\n"
+
+BIO *bio_err=0;
+
+SSL_CTX *initialize_ctx(keyfile,password)
+  char *keyfile;
+  char *password;
+  {
+    SSL_METHOD *meth;//SSL_METHOD?
+    SSL_CTX *ctx;
+    
+    if(!bio_err){
+      /* Global system initialization*/
+      SSL_library_init();
+      SSL_load_error_strings();
+      
+      /* An error write context */
+      bio_err=BIO_new_fp(stderr,BIO_NOCLOSE);
+    }
+
+    /* Set up a SIGPIPE handler */
+    signal(SIGPIPE,sigpipe_handle);
+    
+    /* Create our context*/
+    meth=SSLv23_method();
+    ctx=SSL_CTX_new(meth);
+
+    /* Load our keys and certificates*/
+    if(!(SSL_CTX_use_certificate_chain_file(ctx,
+      keyfile)))
+      berr_exit("Can't read certificate file");
+
+    pass=password;
+    SSL_CTX_set_default_passwd_cb(ctx,
+      password_cb);
+    if(!(SSL_CTX_use_PrivateKey_file(ctx,
+      keyfile,SSL_FILETYPE_PEM)))
+      berr_exit("Can't read key file");
+
+    /* Load the CAs we trust*/
+    if(!(SSL_CTX_load_verify_locations(ctx,
+      CA_LIST,0)))
+      berr_exit("Can't read CA list");
+#if (OPENSSL_VERSION_NUMBER < 0x00905100L)
+    SSL_CTX_set_verify_depth(ctx,1);
+#endif
+    
+    return ctx;
+  }
+
 int main(int argc, char **argv)
 {
   int s, sock, port=PORT;
@@ -46,6 +95,21 @@ int main(int argc, char **argv)
     close(sock);
     exit(0);
   }
+  
+
+
+
+
+
+  initialize_ctx("bob.pem","password");
+
+
+
+
+
+
+
+
 
   memset(&sin,0,sizeof(sin));
   sin.sin_addr.s_addr=INADDR_ANY;
