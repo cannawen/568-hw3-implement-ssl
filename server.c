@@ -111,6 +111,7 @@ static int http_serve(ssl,s)
   SSL *ssl;
   int s;
   {
+  /*
     char buf[BUFSIZZ];
     int r,len;
     BIO *io,*ssl_bio;
@@ -131,8 +132,8 @@ static int http_serve(ssl,s)
           berr_exit("SSL read problem");
       }
 
-      /* Look for the blank line that signals
-         the end of the HTTP headers */
+      // Look for the blank line that signals
+      //   the end of the HTTP headers 
       if(!strcmp(buf,"\r\n") ||
         !strcmp(buf,"\n"))
         break;
@@ -151,9 +152,9 @@ static int http_serve(ssl,s)
     if((r=BIO_flush(io))<0)
       err_exit("Error flushing BIO");
 
-
+*/
     
-    r=SSL_shutdown(ssl);
+    int r=SSL_shutdown(ssl);
     if(!r){
       /* If we called SSL_shutdown() first then
          we always get return value of '0'. In
@@ -179,7 +180,29 @@ static int http_serve(ssl,s)
     return(0);
   }
 
+int tcp_listen()
+  {
+    int sock;
+    struct sockaddr_in sin;
+    int val=1;
+    
+    if((sock=socket(AF_INET,SOCK_STREAM,0))<0)
+      err_exit("Couldn't make socket");
+    
+    memset(&sin,0,sizeof(sin));
+    sin.sin_addr.s_addr=INADDR_ANY;
+    sin.sin_family=AF_INET;
+    sin.sin_port=htons(PORT);
+    setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,
+      &val,sizeof(val));
+    
+    int i=bind(sock,(struct sockaddr *)&sin,sizeof(sin));
+    if(i<0)
+      berr_exit("Couldn't bind");
+    listen(sock,5);  
 
+    return(sock);
+  }
 
 
 
@@ -236,7 +259,7 @@ int main(int argc, char **argv)
   ctx = initialize_ctx("bob.pem","password");
 
 
-
+    //sock=tcp_listen();
 
 
 
@@ -279,27 +302,54 @@ int main(int argc, char **argv)
     else {
 
 
-        sbio=BIO_new_socket(s,BIO_NOCLOSE);
-        ssl=SSL_new(ctx);
-        SSL_set_bio(ssl,sbio,sbio);
-        
-        if((r=SSL_accept(ssl)<=0))
-          berr_exit("SSL accept error");
-        
-        http_serve(ssl,s);
-
-
       /*Child code*/
       int len;
       char buf[256];
       char *answer = "42";
 
+        sbio=BIO_new_socket(s,BIO_NOCLOSE);
+        ssl=SSL_new(ctx);
+        SSL_set_bio(ssl,sbio,sbio);
+
+        r=SSL_accept(ssl);
+        //printf(FMT_OUTPUT, r);
+
+        if((r<=0))
+        {
+          switch(SSL_get_error(ssl,r))
+          {
+            case SSL_ERROR_NONE:
+              fprintf(stderr,"No error\n");
+              break;
+            case SSL_ERROR_ZERO_RETURN:
+              fprintf(stderr,
+                "Derp\n");
+              break;
+            case SSL_ERROR_SYSCALL:
+              fprintf(stderr,
+                "SSL Error: Premature close\n");
+              break;
+            default:
+              berr_exit("SSL accept problem~~~");
+          }
+          berr_exit("SSL accept error!!!");
+        }
+
+
+
+
       //len = recv(s, &buf, 255, 0);
-      len = SSL_read(s,&buf,256);
+      len = SSL_read(ssl,&buf,255);
       buf[len]= '\0';
       printf(FMT_OUTPUT, buf, answer);
       //send(s, answer, strlen(answer), 0);
       SSL_write(ssl,answer,strlen(answer)+1);
+
+
+        http_serve(ssl,s);
+
+
+
       close(sock);
       close(s);
       return 0;
